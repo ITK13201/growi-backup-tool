@@ -26,7 +26,7 @@ jobs:
           distribution: goreleaser
           version: latest
           args: release --clean
-          workdir: ./growi-backup-bool
+          workdir: ./growi-backup-tool
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Your GoReleaser Pro key, if you are using the 'goreleaser-pro' distribution
