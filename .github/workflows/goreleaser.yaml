@@ -10,9 +10,6 @@ permissions:
 jobs:
   goreleaser:
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: ./growi-backup-tool
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,7 +18,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: ./go.mod
+          go-version-file: ./growi-backup-bool/go.mod
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
@@ -29,6 +26,7 @@ jobs:
           distribution: goreleaser
           version: latest
           args: release --clean
+          workdir: ./growi-backup-bool
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Your GoReleaser Pro key, if you are using the 'goreleaser-pro' distribution
