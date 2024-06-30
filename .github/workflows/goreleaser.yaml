@@ -18,7 +18,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
-          go-version-file: ./growi-backup-bool/go.mod
+          go-version-file: ./growi-backup-tool/go.mod
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v5
         with:
