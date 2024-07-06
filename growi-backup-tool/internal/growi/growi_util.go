@@ -83,61 +83,7 @@ func (g *GrowiUtil) loadPages() map[string]*domain.GrowiPage {
 	return growiPagesMap
 }
 
-func (g *GrowiUtil) dumpPages(pagesMap map[string]*domain.GrowiPage, dumpPageFunc func(*domain.GrowiPage) error) {
-	revisionsFilePath := filepath.Join(g.inputDir, g.cfg.Expand.RevisionsFileName)
-
-	revisionsFile, err := os.Open(revisionsFilePath)
-	if err != nil {
-		g.logger.WithFields(logrus.Fields{
-			"error": err.Error(),
-			"path":  revisionsFile,
-		}).Fatal("failed to open revisions file")
-	}
-	defer func(revisionsFile *os.File) {
-		err = revisionsFile.Close()
-		if err != nil {
-			g.logger.WithFields(logrus.Fields{
-				"error": err.Error(),
-				"path":  revisionsFile,
-			}).Fatal("failed to close revisions file")
-		}
-	}(revisionsFile)
-
-	scanner := bufio.NewScanner(revisionsFile)
-	for scanner.Scan() {
-		line := scanner.Text()
-		var revisionMap map[string]interface{}
-		err = json.Unmarshal([]byte(line), &revisionMap)
-		if err != nil {
-			g.logger.WithFields(logrus.Fields{
-				"error": err.Error(),
-				"line":  line,
-			}).Fatal("failed to unmarshal revisionMap")
-		}
-		pageID := revisionMap["pageId"].(map[string]interface{})["$oid"].(string)
-		// if pageID matched, dump page
-		if page, ok := pagesMap[pageID]; ok {
-			growiLatestRevision := domain.GrowiLatestRevision{
-				ID:     revisionMap["_id"].(map[string]interface{})["$oid"].(string),
-				Body:   revisionMap["body"].(string),
-				PageID: pageID,
-			}
-			page.LatestRevision = &growiLatestRevision
-
-			// dump page
-			err = dumpPageFunc(page)
-			if err != nil {
-				g.logger.WithFields(logrus.Fields{
-					"error":    err.Error(),
-					"pageID":   pageID,
-					"pagePath": page.Path,
-				}).Error("failed to dump page")
-			}
-		}
-	}
-}
-
-func (g *GrowiUtil) dumpPage(page *domain.GrowiPage) error {
+func (g *GrowiUtil) dumpSinglePage(page *domain.GrowiPage) error {
 	if page.LatestRevision == nil {
 		// create only dir
 		dirPath := filepath.Join(g.outputDir, page.Path)
@@ -209,7 +155,61 @@ func (g *GrowiUtil) dumpPage(page *domain.GrowiPage) error {
 	return nil
 }
 
+func (g *GrowiUtil) dumpPages(pagesMap map[string]*domain.GrowiPage) {
+	revisionsFilePath := filepath.Join(g.inputDir, g.cfg.Expand.RevisionsFileName)
+
+	revisionsFile, err := os.Open(revisionsFilePath)
+	if err != nil {
+		g.logger.WithFields(logrus.Fields{
+			"error": err.Error(),
+			"path":  revisionsFile,
+		}).Fatal("failed to open revisions file")
+	}
+	defer func(revisionsFile *os.File) {
+		err = revisionsFile.Close()
+		if err != nil {
+			g.logger.WithFields(logrus.Fields{
+				"error": err.Error(),
+				"path":  revisionsFile,
+			}).Fatal("failed to close revisions file")
+		}
+	}(revisionsFile)
+
+	scanner := bufio.NewScanner(revisionsFile)
+	for scanner.Scan() {
+		line := scanner.Text()
+		var revisionMap map[string]interface{}
+		err = json.Unmarshal([]byte(line), &revisionMap)
+		if err != nil {
+			g.logger.WithFields(logrus.Fields{
+				"error": err.Error(),
+				"line":  line,
+			}).Fatal("failed to unmarshal revisionMap")
+		}
+		pageID := revisionMap["pageId"].(map[string]interface{})["$oid"].(string)
+		// if pageID matched, dump page
+		if page, ok := pagesMap[pageID]; ok {
+			growiLatestRevision := domain.GrowiLatestRevision{
+				ID:     revisionMap["_id"].(map[string]interface{})["$oid"].(string),
+				Body:   revisionMap["body"].(string),
+				PageID: pageID,
+			}
+			page.LatestRevision = &growiLatestRevision
+
+			// dump page
+			err = g.dumpSinglePage(page)
+			if err != nil {
+				g.logger.WithFields(logrus.Fields{
+					"error":    err.Error(),
+					"pageID":   pageID,
+					"pagePath": page.Path,
+				}).Error("failed to dump page")
+			}
+		}
+	}
+}
+
 func (g *GrowiUtil) ExpandPages() {
 	pagesMap := g.loadPages()
-	g.dumpPages(pagesMap, g.dumpPage)
+	g.dumpPages(pagesMap)
 }
