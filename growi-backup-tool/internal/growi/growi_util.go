@@ -2,9 +2,11 @@ package growi
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"github.com/itk13201/growi-backup-tool/domain"
 	"github.com/sirupsen/logrus"
+	"io"
 	"os"
 	"path/filepath"
 )
@@ -77,14 +79,39 @@ func (g *GrowiUtil) loadPages() map[string]*domain.GrowiPage {
 			ID:               pageID,
 			Path:             pageMap["path"].(string),
 			LatestRevisionID: latestRevisionID,
+			IsDumped:         false,
 		}
 		growiPagesMap[pageID] = &growiPage
 	}
+	err = scanner.Err()
+	if err != nil {
+		g.logger.WithFields(logrus.Fields{
+			"error": err.Error(),
+		}).Fatal("failed to scan pages file")
+	}
+
 	return growiPagesMap
 }
 
-func (g *GrowiUtil) dumpSinglePage(page *domain.GrowiPage) error {
-	if page.LatestRevision == nil {
+func (g *GrowiUtil) parseRevision(buf *bytes.Buffer) *domain.GrowiRevision {
+	var revisionMap map[string]interface{}
+	err := json.Unmarshal(buf.Bytes(), &revisionMap)
+	if err != nil {
+		g.logger.WithFields(logrus.Fields{
+			"error": err.Error(),
+		}).Fatal("failed to unmarshal revisionMap")
+	}
+
+	return &domain.GrowiRevision{
+		ID:     revisionMap["_id"].(map[string]interface{})["$oid"].(string),
+		Body:   revisionMap["body"].(string),
+		PageID: revisionMap["pageId"].(map[string]interface{})["$oid"].(string),
+	}
+}
+
+func (g *GrowiUtil) dumpSinglePage(page *domain.GrowiPage, revision *domain.GrowiRevision) error {
+	body := revision.Body
+	if body == "" {
 		// create only dir
 		dirPath := filepath.Join(g.outputDir, page.Path)
 		err := os.MkdirAll(dirPath, os.ModePerm)
@@ -96,60 +123,46 @@ func (g *GrowiUtil) dumpSinglePage(page *domain.GrowiPage) error {
 			return err
 		}
 	} else {
-		body := page.LatestRevision.Body
-		if body == "" {
-			// create only dir
-			dirPath := filepath.Join(g.outputDir, page.Path)
-			err := os.MkdirAll(dirPath, os.ModePerm)
+		// create page (*.md)
+		lastElement := filepath.Base(page.Path)
+		var filePath string
+		if lastElement == "/" {
+			filePath = filepath.Join(g.outputDir, "root.md")
+		} else {
+			filePath = filepath.Join(g.outputDir, page.Path+".md")
+		}
+		dirPath := filepath.Dir(filePath)
+		err := os.MkdirAll(dirPath, os.ModePerm)
+		if err != nil {
+			g.logger.WithFields(logrus.Fields{
+				"error":   err.Error(),
+				"dirPath": dirPath,
+			}).Error("failed to create directory")
+			return err
+		}
+		file, err := os.Create(filePath)
+		if err != nil {
+			g.logger.WithFields(logrus.Fields{
+				"error":    err.Error(),
+				"filePath": filePath,
+			}).Error("failed to create file")
+			return err
+		}
+		defer func(file *os.File) {
+			err = file.Close()
 			if err != nil {
 				g.logger.WithFields(logrus.Fields{
 					"error": err.Error(),
-					"path":  page.Path,
-				}).Error("failed to create directory")
-				return err
+				}).Error("failed to close file")
 			}
-		} else {
-			// create page (*.md)
-			lastElement := filepath.Base(page.Path)
-			var filePath string
-			if lastElement == "/" {
-				filePath = filepath.Join(g.outputDir, "root.md")
-			} else {
-				filePath = filepath.Join(g.outputDir, page.Path+".md")
-			}
-			dirPath := filepath.Dir(filePath)
-			err := os.MkdirAll(dirPath, os.ModePerm)
-			if err != nil {
-				g.logger.WithFields(logrus.Fields{
-					"error":   err.Error(),
-					"dirPath": dirPath,
-				}).Error("failed to create directory")
-				return err
-			}
-			file, err := os.Create(filePath)
-			if err != nil {
-				g.logger.WithFields(logrus.Fields{
-					"error":    err.Error(),
-					"filePath": filePath,
-				}).Error("failed to create file")
-				return err
-			}
-			defer func(file *os.File) {
-				err = file.Close()
-				if err != nil {
-					g.logger.WithFields(logrus.Fields{
-						"error": err.Error(),
-					}).Error("failed to close file")
-				}
-			}(file)
-			_, err = file.WriteString(body)
-			if err != nil {
-				g.logger.WithFields(logrus.Fields{
-					"error":        err.Error(),
-					"body(max:16)": body[:16],
-				}).Error("failed to write body")
-				return err
-			}
+		}(file)
+		_, err = file.WriteString(body)
+		if err != nil {
+			g.logger.WithFields(logrus.Fields{
+				"error":        err.Error(),
+				"body(max:16)": body[:16],
+			}).Error("failed to write body")
+			return err
 		}
 	}
 	return nil
@@ -175,35 +188,105 @@ func (g *GrowiUtil) dumpPages(pagesMap map[string]*domain.GrowiPage) {
 		}
 	}(revisionsFile)
 
-	scanner := bufio.NewScanner(revisionsFile)
-	for scanner.Scan() {
-		line := scanner.Text()
-		var revisionMap map[string]interface{}
-		err = json.Unmarshal([]byte(line), &revisionMap)
+	reader := bufio.NewReader(revisionsFile)
+	for i := 0; ; i++ {
+		firstBytes, isPrefix, err := reader.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			} else {
+				g.logger.WithFields(logrus.Fields{
+					"count": i,
+					"error": err.Error(),
+				}).Fatal("failed to read revisions file")
+			}
+		}
+
+		buf := &bytes.Buffer{}
+		_, err = buf.Write(firstBytes)
 		if err != nil {
 			g.logger.WithFields(logrus.Fields{
 				"error": err.Error(),
-				"line":  line,
-			}).Fatal("failed to unmarshal revisionMap")
+			}).Fatal("failed to load revisions file")
 		}
-		pageID := revisionMap["pageId"].(map[string]interface{})["$oid"].(string)
-		// if pageID matched, dump page
-		if page, ok := pagesMap[pageID]; ok {
-			growiLatestRevision := domain.GrowiLatestRevision{
-				ID:     revisionMap["_id"].(map[string]interface{})["$oid"].(string),
-				Body:   revisionMap["body"].(string),
-				PageID: pageID,
-			}
-			page.LatestRevision = &growiLatestRevision
 
-			// dump page
-			err = g.dumpSinglePage(page)
+		if isPrefix {
+			// the line continues
+			for {
+				continuationBytes, isPrefix, err := reader.ReadLine()
+				if err != nil {
+					if err == io.EOF {
+						break
+					} else {
+						g.logger.WithFields(logrus.Fields{
+							"count": i,
+							"error": err.Error(),
+						}).Fatal("failed to read revisions file")
+					}
+				}
+
+				_, err = buf.Write(continuationBytes)
+				if err != nil {
+					g.logger.WithFields(logrus.Fields{
+						"count": i,
+						"error": err.Error(),
+					}).Fatal("failed to write revisions file")
+				}
+
+				if !isPrefix {
+					// reached the end of the line
+					break
+				}
+			}
+		}
+
+		revision := g.parseRevision(buf)
+		if page, ok := pagesMap[revision.PageID]; ok {
+			if *page.LatestRevisionID == revision.ID {
+				// dump page
+				g.logger.WithFields(logrus.Fields{
+					"pageID":     page.ID,
+					"revisionID": revision.ID,
+					"path":       page.Path,
+				}).Info("dumping page...")
+
+				err = g.dumpSinglePage(page, revision)
+				if err != nil {
+					g.logger.WithFields(logrus.Fields{
+						"error":      err.Error(),
+						"pageID":     page.ID,
+						"revisionID": revision.ID,
+						"pagePath":   page.Path,
+					}).Fatal("failed to dump page")
+				}
+
+				page.IsDumped = true
+
+				g.logger.WithFields(logrus.Fields{
+					"pageID":     page.ID,
+					"revisionID": revision.ID,
+					"path":       page.Path,
+				}).Info("dumped page.")
+			}
+		}
+	}
+
+	// create dir of pages without revision
+	for pageID, page := range pagesMap {
+		if page.LatestRevisionID == nil && !page.IsDumped {
+			dirPath := filepath.Join(g.outputDir, page.Path)
+			err = os.MkdirAll(dirPath, os.ModePerm)
 			if err != nil {
 				g.logger.WithFields(logrus.Fields{
-					"error":    err.Error(),
-					"pageID":   pageID,
-					"pagePath": page.Path,
-				}).Error("failed to dump page")
+					"error":  err.Error(),
+					"path":   page.Path,
+					"pageID": pageID,
+				}).Fatal("failed to create directory")
+			} else {
+				g.logger.WithFields(logrus.Fields{
+					"pageID": pageID,
+					"path":   page.Path,
+				}).Info("created directory")
 			}
 		}
 	}
