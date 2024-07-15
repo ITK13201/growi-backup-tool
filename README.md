@@ -27,9 +27,10 @@ Usage:
   growi-backup-tool expand [flags]
 
 Flags:
-  -h, --help                help for expand
-  -i, --input-dir string    Input directory
-  -o, --output-dir string   Output directory
+  -h, --help                    help for expand
+  -o, --output-dir string       output directory
+  -p, --pages-file string       pages file path
+  -r, --revisions-file string   revisions file path
 
 Global Flags:
   -D, --debug   Debug mode

@@ -7,25 +7,23 @@ import (
 )
 
 type ExpandController struct {
-	cfg       *domain.Config
-	logger    *logrus.Logger
-	inputDir  string
-	outputDir string
+	cfg         *domain.Config
+	logger      *logrus.Logger
+	cliArgument *domain.CLIArgumentExpand
 }
 
-func NewExpandController(cfg *domain.Config, logger *logrus.Logger, inputDir string, outputDir string) *ExpandController {
+func NewExpandController(cfg *domain.Config, logger *logrus.Logger, cliArgument *domain.CLIArgumentExpand) *ExpandController {
 	return &ExpandController{
-		cfg:       cfg,
-		logger:    logger,
-		inputDir:  inputDir,
-		outputDir: outputDir,
+		cfg:         cfg,
+		logger:      logger,
+		cliArgument: cliArgument,
 	}
 }
 
 func (ec *ExpandController) Run() {
 	ec.logger.Info("Started expanding pages...")
 
-	growiUtil := growi.NewGrowiUtil(ec.cfg, ec.logger, ec.inputDir, ec.outputDir)
+	growiUtil := growi.NewGrowiUtil(ec.cfg, ec.logger, ec.cliArgument)
 	growiUtil.ExpandPages()
 
 	ec.logger.Info("Finished expanding pages.")

@@ -12,18 +12,16 @@ import (
 )
 
 type GrowiUtil struct {
-	cfg       *domain.Config
-	logger    *logrus.Logger
-	inputDir  string
-	outputDir string
+	cfg               *domain.Config
+	logger            *logrus.Logger
+	cliArgumentExpand *domain.CLIArgumentExpand
 }
 
-func NewGrowiUtil(cfg *domain.Config, logger *logrus.Logger, inputDir string, outputDir string) *GrowiUtil {
+func NewGrowiUtil(cfg *domain.Config, logger *logrus.Logger, cliArgumentExpand *domain.CLIArgumentExpand) *GrowiUtil {
 	return &GrowiUtil{
-		cfg:       cfg,
-		logger:    logger,
-		inputDir:  inputDir,
-		outputDir: outputDir,
+		cfg:               cfg,
+		logger:            logger,
+		cliArgumentExpand: cliArgumentExpand,
 	}
 }
 
@@ -39,7 +37,7 @@ func (g *GrowiUtil) loadTextFile(path string) (*string, error) {
 func (g *GrowiUtil) loadPages() map[string]*domain.GrowiPage {
 	growiPagesMap := map[string]*domain.GrowiPage{}
 
-	pagesFilePath := filepath.Join(g.inputDir, g.cfg.Expand.PagesFileName)
+	pagesFilePath := g.cliArgumentExpand.PagesFilePath
 
 	pagesFile, err := os.Open(pagesFilePath)
 	if err != nil {
@@ -110,10 +108,12 @@ func (g *GrowiUtil) parseRevision(buf *bytes.Buffer) *domain.GrowiRevision {
 }
 
 func (g *GrowiUtil) dumpSinglePage(page *domain.GrowiPage, revision *domain.GrowiRevision) error {
+	outputDirPath := g.cliArgumentExpand.OutputDirPath
+
 	body := revision.Body
 	if body == "" {
 		// create only dir
-		dirPath := filepath.Join(g.outputDir, page.Path)
+		dirPath := filepath.Join(outputDirPath, page.Path)
 		err := os.MkdirAll(dirPath, os.ModePerm)
 		if err != nil {
 			g.logger.WithFields(logrus.Fields{
@@ -127,9 +127,9 @@ func (g *GrowiUtil) dumpSinglePage(page *domain.GrowiPage, revision *domain.Grow
 		lastElement := filepath.Base(page.Path)
 		var filePath string
 		if lastElement == "/" {
-			filePath = filepath.Join(g.outputDir, "root.md")
+			filePath = filepath.Join(outputDirPath, "root.md")
 		} else {
-			filePath = filepath.Join(g.outputDir, page.Path+".md")
+			filePath = filepath.Join(outputDirPath, page.Path+".md")
 		}
 		dirPath := filepath.Dir(filePath)
 		err := os.MkdirAll(dirPath, os.ModePerm)
@@ -169,7 +169,8 @@ func (g *GrowiUtil) dumpSinglePage(page *domain.GrowiPage, revision *domain.Grow
 }
 
 func (g *GrowiUtil) dumpPages(pagesMap map[string]*domain.GrowiPage) {
-	revisionsFilePath := filepath.Join(g.inputDir, g.cfg.Expand.RevisionsFileName)
+	revisionsFilePath := g.cliArgumentExpand.RevisionsFilePath
+	outputDirPath := g.cliArgumentExpand.OutputDirPath
 
 	revisionsFile, err := os.Open(revisionsFilePath)
 	if err != nil {
@@ -274,7 +275,7 @@ func (g *GrowiUtil) dumpPages(pagesMap map[string]*domain.GrowiPage) {
 	// create dir of pages without revision
 	for pageID, page := range pagesMap {
 		if page.LatestRevisionID == nil && !page.IsDumped {
-			dirPath := filepath.Join(g.outputDir, page.Path)
+			dirPath := filepath.Join(outputDirPath, page.Path)
 			err = os.MkdirAll(dirPath, os.ModePerm)
 			if err != nil {
 				g.logger.WithFields(logrus.Fields{

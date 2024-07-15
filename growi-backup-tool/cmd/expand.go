@@ -15,16 +15,26 @@ func NewExpandCmd(cfg *domain.Config) *cobra.Command {
 		Long:  "Expand pages from json to markdown files",
 		Run: func(cmd *cobra.Command, args []string) {
 			isDebug, _ := cmd.Flags().GetBool("debug")
-			inputDir, _ := cmd.Flags().GetString("input-dir")
-			outputDir, _ := cmd.Flags().GetString("output-dir")
+			pagesFilePath, _ := cmd.Flags().GetString("pages-file")
+			revisionsFilePath, _ := cmd.Flags().GetString("revisions-file")
+			outputDirPath, _ := cmd.Flags().GetString("output-dir")
+			cliArgument := &domain.CLIArgumentExpand{
+				PagesFilePath:     pagesFilePath,
+				RevisionsFilePath: revisionsFilePath,
+				OutputDirPath:     outputDirPath,
+			}
 			logger := services.NewLogger(isDebug)
-			controller := controllers.NewExpandController(cfg, logger, inputDir, outputDir)
+			controller := controllers.NewExpandController(cfg, logger, cliArgument)
 			controller.Run()
 		},
 	}
-	expandCmd.PersistentFlags().StringP("input-dir", "i", "", "Input directory")
-	expandCmd.PersistentFlags().StringP("output-dir", "o", "", "Output directory")
-	if err := expandCmd.MarkPersistentFlagRequired("input-dir"); err != nil {
+	expandCmd.PersistentFlags().StringP("pages-file", "p", "", "pages file path")
+	expandCmd.PersistentFlags().StringP("revisions-file", "r", "", "revisions file path")
+	expandCmd.PersistentFlags().StringP("output-dir", "o", "", "output directory")
+	if err := expandCmd.MarkPersistentFlagRequired("pages-file"); err != nil {
+		log.Fatal(err)
+	}
+	if err := expandCmd.MarkPersistentFlagRequired("revisions-file"); err != nil {
 		log.Fatal(err)
 	}
 	if err := expandCmd.MarkPersistentFlagRequired("output-dir"); err != nil {
